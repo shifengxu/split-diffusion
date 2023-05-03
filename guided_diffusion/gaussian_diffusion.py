@@ -173,7 +173,7 @@ class GaussianDiffusion:
         alphas = 1.0 - betas
         alphas_cumprod = np.cumprod(alphas, axis=0)
         g_full = np.sqrt(1-alphas_cumprod)/np.sqrt(alphas_cumprod)
-        self.g_full = th.tensor(g_full).cuda()
+        self.g_full = th.tensor(g_full)
         # linear t
         self.g = np.sqrt(1-self.alphas_cumprod)/np.sqrt(self.alphas_cumprod)
         self.g_prev = np.sqrt(1-self.alphas_cumprod_prev)/np.sqrt(self.alphas_cumprod_prev)
