@@ -4,18 +4,22 @@ process towards more realistic images.
 """
 
 import argparse
-import os, sys
+import os
+import sys
 from functools import partial
+from utils import log_info
 
-import numpy as np
 import torch as th
-import torchvision.utils as tvu
-from torchvision.transforms import functional as TF
-import torch.distributed as dist
 import torch.nn.functional as F
+import torchvision.utils as tvu
 
-sys.path.append('')
-from guided_diffusion import dist_util, logger
+cur_dir = os.path.dirname(__file__) # current dir
+prt_dir = os.path.dirname(cur_dir)  # parent dir
+if cur_dir not in sys.path:
+    sys.path.append(cur_dir)
+if prt_dir not in sys.path:
+    sys.path.append(prt_dir)
+
 from guided_diffusion.script_util import (
     NUM_CLASSES,
     model_and_diffusion_defaults,
@@ -23,46 +27,56 @@ from guided_diffusion.script_util import (
     create_model_and_diffusion,
     create_classifier,
     add_dict_to_argparser,
-    args_to_dict,
 )
 from config import create_config
 
-
-def main():
-    args = create_argparser().parse_args()
-
-    dist_util.setup_dist()
-    logger.configure()
-
-    ## Change your output path here
-    out_dir = os.path.join('symlink/output/',args.model_name,args.cond_name,args.method)
-    if dist.get_rank() == 0: 
-        print(out_dir)
-        os.makedirs(out_dir, exist_ok=True)
-    config, model_config0, class_config = create_config(args.model_name, args.timestep_rp)
-
-    batch_size = config['batch_size']
-    logger.log("creating model and diffusion...")
-    model_config = model_and_diffusion_defaults()
-    model_config.update(model_config0)
+def create_model_classifier(args, config, model_config, class_config):
+    log_info("create_model_classifier()...")
     model, diffusion = create_model_and_diffusion(**model_config)
-    model.load_state_dict( dist_util.load_state_dict(config['model_path'], map_location="cpu") )
-    model.requires_grad_(False).eval().cuda()
-    model.to(dist_util.dev())
+    m_path = config['model_path']
+    log_info(f"  load diff model: {m_path}")
+    s_dict = th.load(m_path, map_location='cpu')
+    model.load_state_dict(s_dict)
+    log_info(f"  load diff model: {m_path} ... done")
+    model.requires_grad_(False).eval()
+    model.to(args.device)
+    log_info(f"  model.to({args.device})")
     if model_config['use_fp16']:
         model.convert_to_fp16()
+        log_info(f"  model.convert_to_fp16()")
+    if len(args.gpu_ids) > 1:
+        log_info(f"  torch.nn.DataParallel(model, device_ids={args.gpu_ids})")
+        model = th.nn.DataParallel(model, device_ids=args.gpu_ids)
 
-    logger.log("loading classifier...")
     classifier_config = classifier_defaults()
     classifier_config.update(class_config)
     classifier = create_classifier(**classifier_config)
-    classifier.load_state_dict( dist_util.load_state_dict(config['classifier_path'], map_location="cpu") )
-    classifier.to(dist_util.dev())
-    classifier.requires_grad_(False).eval().cuda()
+    c_path = config['classifier_path']
+    log_info(f"  load classifier: {m_path}")
+    s_dict = th.load(c_path, map_location="cpu")
+    classifier.load_state_dict(s_dict)
+    log_info(f"  load classifier: {m_path} ... done")
+    classifier.to(args.device)
+    log_info(f"  classifier.to({args.device})")
+    classifier.requires_grad_(False).eval()
     if classifier_config['classifier_use_fp16']:
         classifier.convert_to_fp16()
+        log_info(f"  classifier.convert_to_fp16()")
+    if len(args.gpu_ids) > 1:
+        log_info(f"  torch.nn.DataParallel(classifier, device_ids={args.gpu_ids})")
+        classifier = th.nn.DataParallel(classifier, device_ids=args.gpu_ids)
+    log_info("create_model_classifier()...done")
+    return model, diffusion, classifier
 
-    def cond_fn(x, t, y=None, **kwargs):
+def main():
+    args, config, model_config, class_config = create_args_config()
+    log_info(f"pid : {os.getpid()}")
+    log_info(f"cwd : {os.getcwd()}")
+    log_info(f"args: {args}")
+
+    model, diffusion, classifier = create_model_classifier(args, config, model_config, class_config)
+
+    def cond_fn(x, t, y=None, **_):
         assert y is not None
         with th.enable_grad():
             x_in = x.detach().requires_grad_(True)
@@ -70,20 +84,19 @@ def main():
             log_probs = F.log_softmax(logits, dim=-1)
             selected = log_probs[range(len(logits)), y.view(-1)]
             grad = th.autograd.grad(selected.sum(), x_in)[0]
-            return  grad * config['classifier_scale']
+            return grad * config['classifier_scale']
 
     def model_fn(x, t, y=None):
         assert y is not None
         return model(x, t, y if model_config['class_cond'] else None)
 
-
     if args.method == 'ddim':
         sample_fn = diffusion.ddim_sample_loop
-    elif args.method[:4] in ['plms','pndm']:
+    elif args.method[:4] in ['plms', 'pndm']:
         sample_fn = partial(diffusion.plms_sample_loop, order=int(args.method[4]))
-    elif args.method[:4] in ['ltsp','ours','ltts']:
+    elif args.method[:4] in ['ltsp', 'ours', 'ltts']:
         sample_fn = partial(diffusion.ltsp_sample_loop, order=int(args.method[4]))
-    elif args.method[:4] in ['stsp','bchf']:
+    elif args.method[:4] in ['stsp', 'bchf']:
         sample_fn = partial(diffusion.stsp_sample_loop, order=int(args.method[4]))   
     else:
         sample_fn = diffusion.p_sample_loop 
@@ -91,69 +104,77 @@ def main():
     if args.cond_name == 'cond1': cond_fn0 = cond_fn
     else: cond_fn0 = None
 
-    logger.log("sampling...")
-    all_images = []
-    all_labels = []
-    while len(all_images) * batch_size < args.num_samples:
-        model_kwargs = {}
-        classes = th.randint(
-            low=0, high=NUM_CLASSES, size=(batch_size,), device=dist_util.dev()
-        )
-        model_kwargs["y"] = classes
+    out_dir = args.output_dir
+    os.makedirs(out_dir, exist_ok=True)
+    sample_cnt = args.num_samples
+    image_size = config['image_size']
+    batch_size = config['batch_size']
+    batch_cnt = (sample_cnt - 1) // batch_size + 1
+    log_info("sampling...")
+    log_info(f"sample_cnt : {sample_cnt}")
+    log_info(f"batch_size : {batch_size}")
+    log_info(f"batch_cnt  : {batch_cnt}")
+    log_info(f"image_size : {image_size}")
+    log_info(f"out_dir    : {out_dir}")
+    for b_idx in range(batch_cnt):
+        n = batch_size if b_idx+1 < batch_cnt else sample_cnt - b_idx * batch_size
+        classes = th.randint(low=0, high=NUM_CLASSES, size=(n,), device=args.device)
         sample = sample_fn(
             model_fn,
-            (batch_size, 3,config['image_size'], config['image_size']),
+            (n, 3, image_size, image_size),
             clip_denoised=args.clip_denoised,
-            model_kwargs=model_kwargs,
+            model_kwargs={"y": classes},
             cond_fn=cond_fn0,
             impu_fn=None,
             progress=True,
-            device=dist_util.dev(),
+            device=args.device,
         )
-        sample = ((sample + 1) * 127.5).clamp(0, 255).to(th.uint8)
-        sample = sample.permute(0, 2, 3, 1)
-        sample = sample.contiguous()
+        save_samples(sample, classes, out_dir, b_idx, batch_size)
+    # while
+    log_info("sampling complete")
 
-        gathered_samples = [th.zeros_like(sample) for _ in range(dist.get_world_size())]
-        dist.all_gather(gathered_samples, sample)  # gather not supported with NCCL
-        all_images.extend([sample.cpu().numpy() for sample in gathered_samples])
-        gathered_labels = [th.zeros_like(classes) for _ in range(dist.get_world_size())]
-        dist.all_gather(gathered_labels, classes)
-        all_labels.extend([labels.cpu().numpy() for labels in gathered_labels])
-        logger.log(f"created {len(all_images) * batch_size} samples")
+def save_samples(sample, classes, out_dir, b_idx, b_size):
+    sample = ((sample + 1) / 2).clamp(0.0, 1.0)
+    img_cnt = len(sample)
+    img_path = None
+    init_id = b_idx * b_size
+    for i in range(img_cnt):
+        img_id = init_id + i
+        cls_id = classes[i]
+        img_path = os.path.join(out_dir, f"{img_id:05d}_c{cls_id:03d}.png")
+        tvu.save_image(sample[i], img_path)
+    log_info(f"  saved {img_cnt} images: {img_path}")
 
-
-    arr = np.concatenate(all_images, axis=0)
-    arr = arr[: args.num_samples]
-    label_arr = np.concatenate(all_labels, axis=0)
-    label_arr = label_arr[: args.num_samples]
-    if dist.get_rank() == 0:
-        shape_str = "x".join([str(x) for x in arr.shape])
-        out_path = os.path.join(out_dir, f"samples_{shape_str}.npz")
-        logger.log(f"saving to {out_path}")
-        np.savez(out_path, arr, label_arr)
-
-    dist.barrier()
-    logger.log("sampling complete")
-
-
-def create_argparser():
-
+def create_args_config():
     defaults = dict(
         clip_denoised=True,
-        num_samples=100,
+        num_samples=10,
         use_ddim=True,
-        model_name = "u256",
-        method = "ddim",
-        cond_name = "cond1",
-        timestep_rp = 25,
+        model_name="c64",
+        method="ddim",
+        cond_name="cond1",
+        timestep_rp=25,
+        output_dir='output1/generated/',
     )
 
     defaults.update(model_and_diffusion_defaults())
     defaults.update(classifier_defaults())
     parser = argparse.ArgumentParser()
     add_dict_to_argparser(parser, defaults)
-    return parser
+    parser.add_argument("--todo", type=str, default='alpha_bar_all, schedule_sample')
+    # parser.add_argument("--todo", type=str, default='schedule_sample')
+    parser.add_argument('--gpu_ids', nargs='+', type=int, default=[7, 6])
+
+    args = parser.parse_args()
+    gpu_ids = args.gpu_ids
+    log_info(f"gpu_ids : {gpu_ids}")
+    args.device = th.device(f"cuda:{gpu_ids[0]}") if th.cuda.is_available() and gpu_ids else th.device("cpu")
+
+    config, model_config0, class_config = create_config(args.model_name, args.timestep_rp)
+    model_config = model_and_diffusion_defaults()
+    model_config.update(model_config0)
+
+    return args, config, model_config, class_config
 
 
 if __name__ == "__main__":

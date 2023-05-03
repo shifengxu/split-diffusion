@@ -5,6 +5,8 @@ __pycache__/
 
 
 symlink
+.idea/
+ckpt/
 
 # C extensions
 *.so

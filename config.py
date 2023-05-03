@@ -1,19 +1,13 @@
 
 def create_config(model_name='u256', timestep_rp=50):
     if model_name == 'c64':
-        #batch_size = 6  
-        #use_ddim=False
-        #clip_denoised=True
-        #classifier_scale=0.1
-        
-        ## Change your model path here
         config = {
-            'model_path' :'symlink/pretrained/64x64_diffusion.pt',
-            'classifier_path':'symlink/pretrained/64x64_classifier.pt',
+            'model_path' : 'symlink/pretrained/64x64_diffusion.pt',
+            'classifier_path': 'symlink/pretrained/64x64_classifier.pt',
             'image_size': 64,
-            'batch_size' : 64,
-            'use_ddim':False,
-            'clip_denoised':True,
+            'batch_size' : 8,
+            'use_ddim': False,
+            'clip_denoised': True,
             'classifier_scale': 0.1,
         }
         model_config = {
@@ -34,18 +28,16 @@ def create_config(model_name='u256', timestep_rp=50):
             'use_fp16': True,
             'use_scale_shift_norm': True,
         }
-        class_config = {'classifier_depth':4 }
-        #model_path = 'symlink/pretrained/64x64_diffusion.pt'
-        #classifier_path ='symlink/pretrained/64x64_classifier.pt'
+        class_config = {'classifier_depth': 4}
     elif model_name == 'c128':
-        ## Change your model path here
+        # # Change your model path here
         config = {
-            'model_path' :'symlink/pretrained/128x128_diffusion.pt',
-            'classifier_path':'symlink/pretrained/128x128_classifier.pt',
+            'model_path' : 'symlink/pretrained/128x128_diffusion.pt',
+            'classifier_path': 'symlink/pretrained/128x128_classifier.pt',
             'image_size': 128,
             'batch_size' : 25,
-            'use_ddim':False,
-            'clip_denoised':True,
+            'use_ddim': False,
+            'clip_denoised': True,
             'classifier_scale': 1.25,
         }
         model_config = {
@@ -68,19 +60,19 @@ def create_config(model_name='u256', timestep_rp=50):
             'image_size': 128,
         }
     elif model_name == 'c256':
-        #batch_size = 6
-        #use_ddim=False
-        #clip_denoised=True
-        #classifier_scale=2.5
+        # batch_size = 6
+        # use_ddim=False
+        # clip_denoised=True
+        # classifier_scale=2.5
 
-        ## Change your model path here
+        # # Change your model path here
         config = {
-            'model_path' :'symlink/pretrained/256x256_diffusion.pt',
-            'classifier_path':'symlink/pretrained/256x256_classifier.pt',
+            'model_path' : 'symlink/pretrained/256x256_diffusion.pt',
+            'classifier_path': 'symlink/pretrained/256x256_classifier.pt',
             'image_size': 256,
             'batch_size' : 6,
-            'use_ddim':False,
-            'clip_denoised':True,
+            'use_ddim': False,
+            'clip_denoised': True,
             'classifier_scale': 2.5,
         }
         model_config = {
@@ -103,14 +95,14 @@ def create_config(model_name='u256', timestep_rp=50):
             'image_size': 256,
         }
     elif model_name == 'u256':
-        ## Change your model path here
+        # # Change your model path here
         config = {
-            'model_path' :'symlink/pretrained/256x256_diffusion_uncond.pt',
-            'classifier_path':'symlink/pretrained/256x256_classifier.pt',
+            'model_path' : 'symlink/pretrained/256x256_diffusion_uncond.pt',
+            'classifier_path': 'symlink/pretrained/256x256_classifier.pt',
             'image_size': 256,
             'batch_size' : 20,
-            'use_ddim':False,
-            'clip_denoised':True,
+            'use_ddim': False,
+            'clip_denoised': True,
             'classifier_scale': 10.0,
         }
         model_config = {
@@ -132,17 +124,17 @@ def create_config(model_name='u256', timestep_rp=50):
         class_config = {
             'image_size': 256,
         }
-        #model_path = 'symlink/pretrained/256x256_diffusion_uncond.pt'
-        #classifier_path ='symlink/pretrained/256x256_classifier.pt'
+        # model_path = 'symlink/pretrained/256x256_diffusion_uncond.pt'
+        # classifier_path ='symlink/pretrained/256x256_classifier.pt'
     elif model_name == 'c512':
-        ## Change your model path here
+        # # Change your model path here
         config = {
-            'model_path' :'symlink/pretrained/512x512_diffusion.pt',
-            'classifier_path':'symlink/pretrained/512x512_classifier.pt',
+            'model_path' : 'symlink/pretrained/512x512_diffusion.pt',
+            'classifier_path': 'symlink/pretrained/512x512_classifier.pt',
             'image_size': 512,
             'batch_size' : 9,
-            'use_ddim':False,
-            'clip_denoised':True,
+            'use_ddim': False,
+            'clip_denoised': True,
             'classifier_scale': 9.0,
         }
         model_config = {
@@ -164,5 +156,7 @@ def create_config(model_name='u256', timestep_rp=50):
         class_config = {
             'image_size': 512,
         }
-    
+    else:
+        raise ValueError(f"Unknown model_name: {model_name}")
+
     return config, model_config, class_config
