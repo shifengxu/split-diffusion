@@ -74,16 +74,23 @@ class SpacedDiffusion(GaussianDiffusion):
         self.use_timesteps = set(use_timesteps)
         self.timestep_map = []
         self.original_num_steps = len(kwargs["betas"])
-
-        base_diffusion = GaussianDiffusion(**kwargs)  # pylint: disable=missing-kwoa
-        last_alpha_cumprod = 1.0
-        new_betas = []
-        for i, alpha_cumprod in enumerate(base_diffusion.alphas_cumprod):
-            if i in self.use_timesteps:
-                new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
-                last_alpha_cumprod = alpha_cumprod
-                self.timestep_map.append(i)
-        kwargs["betas"] = np.array(new_betas)
+        predefined_ts = kwargs['predefined_ts']
+        # remove the item. It's used by parent class but parent class not have such argument.
+        kwargs.pop('predefined_ts', None)
+        if predefined_ts is not None:
+            # use predefined ab and ts
+            # kwargs["betas"] will be handled in parent class.
+            self.timestep_map = predefined_ts.cpu().numpy()
+        else:
+            base_diffusion = GaussianDiffusion(**kwargs)  # pylint: disable=missing-kwoa
+            last_alpha_cumprod = 1.0
+            new_betas = []
+            for i, alpha_cumprod in enumerate(base_diffusion.alphas_cumprod):
+                if i in self.use_timesteps:
+                    new_betas.append(1 - alpha_cumprod / last_alpha_cumprod)
+                    last_alpha_cumprod = alpha_cumprod
+                    self.timestep_map.append(i)
+            kwargs["betas"] = np.array(new_betas)
         super().__init__(**kwargs)
 
     def p_mean_variance(

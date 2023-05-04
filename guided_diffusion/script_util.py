@@ -1,6 +1,8 @@
 import argparse
 import inspect
 
+import numpy as np
+
 from . import gaussian_diffusion as gd
 from .respace import SpacedDiffusion, space_timesteps
 from .unet import SuperResModel, UNetModel, EncoderUNetModel
@@ -95,6 +97,8 @@ def create_model_and_diffusion(
     resblock_updown,
     use_fp16,
     use_new_attention_order,
+    predefined_ab=None, # predefined alpha_bar
+    predefined_ts=None, # predefined timestep
 ):
     model = create_model(
         image_size,
@@ -123,6 +127,8 @@ def create_model_and_diffusion(
         rescale_timesteps=rescale_timesteps,
         rescale_learned_sigmas=rescale_learned_sigmas,
         timestep_respacing=timestep_respacing,
+        predefined_ab=predefined_ab,
+        predefined_ts=predefined_ts,
     )
     return model, diffusion
 
@@ -394,6 +400,8 @@ def create_gaussian_diffusion(
     rescale_timesteps=False,
     rescale_learned_sigmas=False,
     timestep_respacing="",
+    predefined_ab=None,  # predefined alpha_bar
+    predefined_ts=None,  # predefined timestep
 ):
     betas = gd.get_named_beta_schedule(noise_schedule, steps)
     if use_kl:
@@ -404,8 +412,14 @@ def create_gaussian_diffusion(
         loss_type = gd.LossType.MSE
     if not timestep_respacing:
         timestep_respacing = [steps]
+    if predefined_ts is not None:
+        seq_full = np.append([0], predefined_ts.cpu().numpy())
+    else:
+        tmp = np.linspace(0, 1000, num=int(timestep_respacing), endpoint=False)
+        seq_full = np.append(tmp, [999])
     return SpacedDiffusion(
-        use_timesteps=space_timesteps(steps, timestep_respacing),
+        # use_timesteps=space_timesteps(steps, timestep_respacing),
+        use_timesteps=seq_full[1:],
         betas=betas,
         model_mean_type=(
             gd.ModelMeanType.EPSILON if not predict_xstart else gd.ModelMeanType.START_X
@@ -421,6 +435,8 @@ def create_gaussian_diffusion(
         ),
         loss_type=loss_type,
         rescale_timesteps=rescale_timesteps,
+        predefined_ab=predefined_ab,
+        predefined_ts=predefined_ts,
     )
 
 

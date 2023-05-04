@@ -13,8 +13,10 @@ import torch as th
 
 from .nn import mean_flat
 from .losses import normal_kl, discretized_gaussian_log_likelihood
+from utils import log_info
 import pdb
 
+_batch_index = -1  # trick. if first batch (index is 0), we can output some info.
 
 def get_named_beta_schedule(schedule_name, num_diffusion_timesteps):
     """
@@ -124,23 +126,34 @@ class GaussianDiffusion:
         model_var_type,
         loss_type,
         rescale_timesteps=False,
+        predefined_ab=None,  # predefined alpha_bar
     ):
         self.model_mean_type = model_mean_type
         self.model_var_type = model_var_type
         self.loss_type = loss_type
         self.rescale_timesteps = rescale_timesteps
 
-        # Use float64 for accuracy.
-        betas = np.array(betas, dtype=np.float64)
-        self.betas = betas
-        assert len(betas.shape) == 1, "betas must be 1-D"
-        assert (betas > 0).all() and (betas <= 1).all()
+        if predefined_ab is not None:
+            assert len(predefined_ab.shape) == 1, "predefined_ab must be 1-D"
+            assert (predefined_ab > 0).all() and (predefined_ab <= 1).all()
+            self.num_timesteps = int(predefined_ab.shape[0])
+            self.alphas_cumprod = predefined_ab.cpu().numpy()
+            self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
+            alphas = self.alphas_cumprod / self.alphas_cumprod_prev
+            betas = 1 - alphas
+            self.betas = betas
+        else:
+            # Use float64 for accuracy.
+            betas = np.array(betas, dtype=np.float64)
+            self.betas = betas
+            assert len(betas.shape) == 1, "betas must be 1-D"
+            assert (betas > 0).all() and (betas <= 1).all()
 
-        self.num_timesteps = int(betas.shape[0])
+            self.num_timesteps = int(betas.shape[0])
 
-        alphas = 1.0 - betas
-        self.alphas_cumprod = np.cumprod(alphas, axis=0)
-        self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
+            alphas = 1.0 - betas
+            self.alphas_cumprod = np.cumprod(alphas, axis=0)
+            self.alphas_cumprod_prev = np.append(1.0, self.alphas_cumprod[:-1])
         self.alphas_cumprod_next = np.append(self.alphas_cumprod[1:], 0.0)
         assert self.alphas_cumprod_prev.shape == (self.num_timesteps,)
 
@@ -799,6 +812,9 @@ class GaussianDiffusion:
             * th.sqrt((1 - alpha_bar_prev) / (1 - alpha_bar))
             * th.sqrt(1 - alpha_bar / alpha_bar_prev)
         )
+        if _batch_index == 0:
+            log_info(f"GaussianDiffusion::ddim_sample() ab={alpha_bar[0][0][0][0]:.8f}, "
+                     f"ab_prev={alpha_bar_prev[0][0][0][0]:.8f}, t={t[0]:03d}")
         # Equation 12.
         noise = th.randn_like(x)
         mean_pred = (
