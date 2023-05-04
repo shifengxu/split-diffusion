@@ -71,8 +71,8 @@ def aggregate_class_image(args):
     log_info(f"aggregate_class_image()...")
     log_info(f"  fid_input1 : {args.fid_input1}")
     log_info(f"  class_lo_hi: {args.class_lo_hi}")
-    if os.path.exists(args.fid_input1):
-        return  # trick. we only make aggregation dir if fid_input1 not exist
+    if os.path.exists(args.fid_input1) and os.listdir(args.fid_input1):
+        return  # trick. we only make aggregation dir if fid_input1 not exist or empty
     c_low, c_high = args.class_lo_hi
     c_img_dir = args.class_img_dir
     log_info(f"  cls_img_dir: {args.class_img_dir}")
@@ -119,11 +119,13 @@ def main():
         sb.schedule_batch()
     elif a == 'sample_scheduled':
         log_info(f"{a} ======================================================================")
+        aggregate_class_image(args)
         runner = ConditionalSampler(args, config, model_config, class_config)
         helper = SampleVuboHelper(args, runner)
         helper.sample_scheduled()
     elif a == 'schedule_sample':
         log_info(f"{a} ======================================================================")
+        aggregate_class_image(args)
         runner = ConditionalSampler(args, config, model_config, class_config)
         helper = SampleVuboHelper(args, runner)
         helper.schedule_sample()
