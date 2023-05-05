@@ -91,7 +91,7 @@ def aggregate_class_image(args):
             f_cnt += 1
         # for
     # for
-    log_info(f"  coied file: {f_cnt}")
+    log_info(f"  copied file: {f_cnt}")
     log_info(f"aggregate_class_image()...done")
 
 def main():

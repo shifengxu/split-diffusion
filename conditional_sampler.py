@@ -18,13 +18,14 @@ from guided_diffusion.script_util import (
 )
 
 class AlphaBarMapper:
-    def __init__(self, device):
+    def __init__(self, noise_schedule, device):
         total_step = 1000
-        betas = gaussian_diffusion.get_named_beta_schedule('linear', total_step)
+        betas = gaussian_diffusion.get_named_beta_schedule(noise_schedule, total_step)
         alphas = 1.0 - betas
         alpha_bars = np.cumprod(alphas, axis=0)  # alpha_bar cumulated product
         self.ab_cump = th.from_numpy(alpha_bars).to(device)
         self.total_step = total_step
+        self.noise_schedule = noise_schedule
         timesteps = np.arange(total_step)
         self.timesteps = th.from_numpy(timesteps).to(device)
 
@@ -106,8 +107,17 @@ class ConditionalSampler:
         self.method_arr = args.method_arr
         self.device = args.device
         self.real_seq = None
-        self.ab_mapper = AlphaBarMapper(self.device)  # alpha_bar mapper
-        log_info(f"AlphaBarMap(): total_step={self.ab_mapper.total_step}")
+        self.noise_schedule = model_config['noise_schedule']
+        abm = AlphaBarMapper(self.noise_schedule, self.device)  # alpha_bar mapper
+        self.ab_mapper = abm
+        log_info(f"ConditionalSampler()...")
+        log_info(f"  model_name    : {self.model_name}")
+        log_info(f"  cond_name     : {self.cond_name}")
+        log_info(f"  timestep_rp   : {self.timestep_rp}")
+        log_info(f"  method        : {self.method}")
+        log_info(f"  device        : {self.device}")
+        log_info(f"  noise_schedule: {self.noise_schedule}")
+        log_info(f"  AlphaBarMap() : total_step={abm.total_step}, noise={abm.noise_schedule}")
 
     @staticmethod
     def load_predefined_aap(f_path: str, meta_dict=None):
@@ -381,6 +391,7 @@ class ConditionalSampler:
             ts_list = th.tensor(ts_list).to(self.device)
             ab_list = self.ab_mapper.ts2ab(ts_list)
             ab_list = ab_list.squeeze(1)
+            ab_list = ab_list.clamp(1e-6, 1.0)
             if len(ab_list) != self.timestep_rp:
                 raise Exception(f"alpha_bar count {len(ab_list)} not match steps {self.timestep_rp}")
             with open(file_path, 'w') as f_ptr:
