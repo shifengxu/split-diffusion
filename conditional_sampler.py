@@ -234,6 +234,8 @@ class ConditionalSampler:
 
         def model_fn(x, t, y=None):
             assert y is not None
+            if gaussian_diffusion._batch_index == 0:
+                log_info(f"conditional_sampler::model_fn() t={t[0]:7.3f}")
             return model(x, t, y if model_config['class_cond'] else None)
 
         if self.method == 'ddim':

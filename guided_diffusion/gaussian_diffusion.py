@@ -1279,6 +1279,9 @@ class GaussianDiffusion:
         s0 = 1/th.sqrt(g0**2 + 1)
         s_1 = 1/th.sqrt(g_1**2 + 1)
         del_g = g_1 - g0
+        if _batch_index == 0:
+            log_info(f"GaussianDiffusion::stsp_sample() idx={t[0]:02d}, "
+                     f"ab={self.alphas_cumprod[t[0]]:.8f}, g0={g0[0]:010.4f}, g_1={g_1[0]:010.4f}")
 
         if cond_fn is not None:
             alpha_half = 1/((g0 + g_1)**2/4+1)

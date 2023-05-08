@@ -415,7 +415,10 @@ def create_gaussian_diffusion(
     if predefined_ts is not None:
         seq_full = np.append([0], predefined_ts.cpu().numpy())
     else:
-        tmp = np.linspace(0, 1000, num=int(timestep_respacing), endpoint=False)
+        tmp = np.linspace(0, 1000, num=int(timestep_respacing), endpoint=False, dtype=np.int)
+        # why the data-type is "int"?
+        # Because in SpacedDiffusion __init__() functions, it is using int-type value
+        # to match the timesteps
         seq_full = np.append(tmp, [999])
     return SpacedDiffusion(
         # use_timesteps=space_timesteps(steps, timestep_respacing),
