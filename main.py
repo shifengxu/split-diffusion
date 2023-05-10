@@ -1,30 +1,28 @@
 import argparse
 import os
+import random
 import shutil
 
+import numpy as np
 import torch as th
 
 from conditional_sampler import ConditionalSampler
 from sample_vubo_helper import SampleVuboHelper
 from schedule.schedule_batch import ScheduleBatch
-from utils import log_info
+from utils import log_info, str2bool
 from guided_diffusion.script_util import model_and_diffusion_defaults, add_dict_to_argparser
 from config import create_config
 
 def create_args_config():
-    defaults = dict(
-        clip_denoised=True,
-        use_ddim=True,
-        model_name="c64",
-        cond_name="cond1",
-    )
-
     parser = argparse.ArgumentParser()
-    add_dict_to_argparser(parser, defaults)
     # parser.add_argument("--todo", type=str, default='alpha_bar_all, schedule_sample')
     parser.add_argument("--todo", type=str, default='schedule_sample')
     parser.add_argument('--gpu_ids', nargs='+', type=int, default=[7, 6])
     parser.add_argument('--root_dir', type=str, default='.')
+    parser.add_argument('--model_name', type=str, default='c64')
+    parser.add_argument('--cond_name', type=str, default='cond1')
+    parser.add_argument('--clip_denoised', type=str2bool, default=True)
+    parser.add_argument('--use_ddim', type=str2bool, default=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--repeat_times", type=int, default=1, help='run XX times to get avg FID')
     parser.add_argument("--ab_original_dir", type=str,  default='./output7/phase1_ab_original')
@@ -65,12 +63,33 @@ def create_args_config():
     model_config = model_and_diffusion_defaults()
     model_config.update(model_config0)
 
+    # set random seed
+    seed = args.seed  # if seed is 0. then ignore it.
+    log_info(f"args.seed: {seed}")
+    if seed:
+        # set seed before generating sample. Make sure use same seed to generate.
+        log_info(f"  torch.manual_seed({seed})")
+        log_info(f"  np.random.seed({seed})")
+        log_info(f"  random.seed({seed})")
+        th.manual_seed(seed)
+        np.random.seed(seed)
+        random.seed(seed)
+    if seed and th.cuda.is_available():
+        log_info(f"  torch.cuda.manual_seed({seed})")
+        log_info(f"  torch.cuda.manual_seed_all({seed})")
+        th.cuda.manual_seed(seed)
+        th.cuda.manual_seed_all(seed)
+    log_info(f"final seed: torch.initial_seed(): {th.initial_seed()}")
+
     return args, config, model_config, class_config
 
 def aggregate_class_image(args):
     log_info(f"aggregate_class_image()...")
     log_info(f"  fid_input1 : {args.fid_input1}")
     log_info(f"  class_lo_hi: {args.class_lo_hi}")
+    if not args.fid_input1:
+        log_info(f"  abort as fid_input1 is empty.")
+        return
     if os.path.exists(args.fid_input1) and os.listdir(args.fid_input1):
         return  # trick. we only make aggregation dir if fid_input1 not exist or empty
     c_low, c_high = args.class_lo_hi

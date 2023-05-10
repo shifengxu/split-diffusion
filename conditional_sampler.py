@@ -335,6 +335,26 @@ class ConditionalSampler:
         ks = f"s{self.timestep_rp:02d}_{self.method}_{self.model_name}"
         return ks
 
+    @staticmethod
+    def calc_fid(input1, input2):
+        if not input1:
+            log_info(f"  return 0.0 as FID because input1 is empty")
+            return 0.0
+        log_info(f"  input1: {input1}")
+        log_info(f"  input2: {input2}")
+        metrics_dict = torch_fidelity.calculate_metrics(
+            input1=input1,
+            input2=input2,
+            cuda=True,
+            isc=False,
+            fid=True,
+            kid=False,
+            verbose=False,
+            samples_find_deep=True,
+        )
+        fid = metrics_dict['frechet_inception_distance']
+        return fid
+
     def sample_times(self, times=None, aap_file=None):
         args = self.args
         times = times or args.repeat_times
@@ -345,19 +365,7 @@ class ConditionalSampler:
             self.sample(aap_file=aap_file)
             ss = self.config_key_str()  # get ss again as config may change due to aap_file.
             log_info(f"{ss}-{i}/{times} => FID calculating...")
-            log_info(f"  input1: {input1}")
-            log_info(f"  input2: {input2}")
-            metrics_dict = torch_fidelity.calculate_metrics(
-                input1=input1,
-                input2=input2,
-                cuda=True,
-                isc=False,
-                fid=True,
-                kid=False,
-                verbose=False,
-                samples_find_deep=True,
-            )
-            fid = metrics_dict['frechet_inception_distance']
+            fid = self.calc_fid(input1, input2)
             log_info(f"{ss}-{i}/{times} => FID: {fid:.6f}")
             fid_arr.append(fid)
         # for
