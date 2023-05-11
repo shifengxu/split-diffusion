@@ -1,5 +1,6 @@
 import datetime
 import os
+import random
 import shutil
 import time
 import numpy as np
@@ -355,7 +356,27 @@ class ConditionalSampler:
         fid = metrics_dict['frechet_inception_distance']
         return fid
 
+    def set_seed(self):
+        # set random seed
+        seed = self.args.seed  # if seed is 0. then ignore it.
+        log_info(f"conditional_sampler::set_seed() args.seed: {seed}")
+        if seed:
+            # set seed before generating sample. Make sure use same seed to generate.
+            log_info(f"  torch.manual_seed({seed})")
+            log_info(f"  np.random.seed({seed})")
+            log_info(f"  random.seed({seed})")
+            th.manual_seed(seed)
+            np.random.seed(seed)
+            random.seed(seed)
+        if seed and th.cuda.is_available():
+            log_info(f"  torch.cuda.manual_seed({seed})")
+            log_info(f"  torch.cuda.manual_seed_all({seed})")
+            th.cuda.manual_seed(seed)
+            th.cuda.manual_seed_all(seed)
+        log_info(f"conditional_sampler::set_seed() final seed: torch.initial_seed(): {th.initial_seed()}")
+
     def sample_times(self, times=None, aap_file=None):
+        self.set_seed()
         args = self.args
         times = times or args.repeat_times
         fid_arr = []
