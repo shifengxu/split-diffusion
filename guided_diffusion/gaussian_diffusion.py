@@ -1482,7 +1482,7 @@ class GaussianDiffusion:
             old_eps = old_out['old_eps']
             old_eps.append(eps)
 
-        
+        # this is about Eq-2 and Eq-3. s0 is sqrt(1 - \bar{\alpha})
         eps_prime = plms_mixer(old_eps, order)
         sample = (x/s0  + del_g * eps_prime) * s_1
 
